@@ -343,11 +343,6 @@ def _safe(text: Any) -> str:
     return html.escape(str(text or "-")).replace("\n", "<br/>")
 
 
-def _short(text: Any, limit: int = 130) -> str:
-    value = str(text or "-").strip()
-    return value if len(value) <= limit else value[: limit - 1] + "…"
-
-
 def _pdf_styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
@@ -506,16 +501,13 @@ def generate_pdf(
     story.extend([inventory_table, Spacer(1, 5 * mm)])
 
     story.append(_p("2. 항목별 평가", styles["h1"]))
-    score_rows = [[
-        _p("평가영역", styles["table_bold"]), _p("점수", styles["table_bold"]), _p("AI 판단 근거", styles["table_bold"])
-    ]]
+    score_rows = [[_p("평가영역", styles["table_bold"]), _p("점수", styles["table_bold"])]]
     for item in final_scores:
         score_rows.append([
             _p(item["name"], styles["table_bold"]),
             _p(f"{item['score']} / {item['max']}", styles["center"]),
-            _p(_short(item.get("reason"), 180), styles["table"]),
         ])
-    score_table = Table(score_rows, colWidths=[49 * mm, 20 * mm, 95 * mm], repeatRows=1)
+    score_table = Table(score_rows, colWidths=[132 * mm, 32 * mm], repeatRows=1)
     score_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6EEF6")),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D9E2EC")),
@@ -526,93 +518,53 @@ def generate_pdf(
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
-    story.extend([score_table, Spacer(1, 4 * mm)])
+    story.extend([score_table, Spacer(1, 3 * mm)])
+    for item in final_scores:
+        story.append(_p(f"{item['name']} — AI 판단 근거: {item.get('reason') or '근거 미제공'}", styles["body"]))
+    story.append(Spacer(1, 2 * mm))
 
     story.append(_p("3. 파일 간 정합성 점검", styles["h1"]))
     if cross_file_issues:
-        issue_rows = [[
-            _p("중요도", styles["table_bold"]), _p("관련 파일", styles["table_bold"]),
-            _p("확인 사항", styles["table_bold"]), _p("권고", styles["table_bold"])
-        ]]
-        for issue in cross_file_issues:
+        for issue_no, issue in enumerate(cross_file_issues, start=1):
             label, color = _severity_label(issue.get("severity", "low"))
-            severity = Paragraph(f'<font color="{color.hexval()}"><b>{_safe(label)}</b></font>', styles["center"])
-            related = ", ".join(issue.get("related_files", []) or [])
-            issue_rows.append([
-                severity,
-                _p(_short(related, 85), styles["table"]),
-                _p(_short(issue.get("issue"), 170), styles["table"]),
-                _p(_short(issue.get("recommendation"), 150), styles["table"]),
-            ])
-        issue_table = Table(issue_rows, colWidths=[17 * mm, 37 * mm, 58 * mm, 52 * mm], repeatRows=1)
-        issue_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FDECEC")),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#E7C3C0")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 5),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.extend([issue_table, Spacer(1, 4 * mm)])
+            related = ", ".join(issue.get("related_files", []) or []) or "관련 파일 미지정"
+            issue_title = Paragraph(
+                f'<font color="{color.hexval()}"><b>[{_safe(label)}] 확인 사항 {issue_no}</b></font>',
+                styles["body"],
+            )
+            story.append(issue_title)
+            story.append(_p(f"관련 파일: {related}", styles["small"]))
+            story.append(_p(f"확인 사항: {issue.get('issue') or '미기재'}", styles["body"]))
+            story.append(_p(f"수정 권고: {issue.get('recommendation') or '미기재'}", styles["body"]))
+            story.append(Spacer(1, 1.5 * mm))
     else:
         story.append(_p("여러 이미지와 MD 파일 간에 명확한 모순 또는 보완 필요 사항이 자동 탐지되지 않았음.", styles["body"]))
 
     story.append(_p("4. 내부 정합성 체크", styles["h1"]))
-    check_rows = [[_p("결과", styles["table_bold"]), _p("점검 항목", styles["table_bold"]), _p("판단 근거", styles["table_bold"])]]
-    for check in internal_checks:
+    for check_no, check in enumerate(internal_checks, start=1):
         passed = bool(check.get("pass"))
-        label = "통과" if passed else "보완"
+        label = "통과" if passed else "보완 필요"
         color = "#1F7A4C" if passed else "#B42318"
-        mark = Paragraph(f'<font color="{color}"><b>{label}</b></font>', styles["center"])
-        check_rows.append([
-            mark,
-            _p(_short(check.get("question"), 125), styles["table"]),
-            _p(_short(check.get("comment"), 175), styles["table"]),
-        ])
-    check_table = Table(check_rows, colWidths=[17 * mm, 70 * mm, 77 * mm], repeatRows=1)
-    check_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6EEF6")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D9E2EC")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
-    story.extend([check_table, Spacer(1, 4 * mm)])
+        check_title = Paragraph(
+            f'<font color="{color}"><b>[{_safe(label)}] {check_no}. {_safe(check.get("question") or "점검 항목 미기재")}</b></font>',
+            styles["body"],
+        )
+        story.append(check_title)
+        story.append(_p(f"판단 근거: {check.get('comment') or '근거 미제공'}", styles["body"]))
+        story.append(Spacer(1, 1.2 * mm))
+    story.append(Spacer(1, 2 * mm))
 
     if evidence_by_asset:
         story.append(_p("5. 파일별 분석 메모", styles["h1"]))
-        evidence_rows = [[_p("파일", styles["table_bold"]), _p("확인된 핵심 구조", styles["table_bold"])]]
-        for evidence in evidence_by_asset:
-            evidence_rows.append([
-                _p(_short(evidence.get("asset"), 95), styles["table_bold"]),
-                _p(_short(evidence.get("summary"), 230), styles["table"]),
-            ])
-        evidence_table = Table(evidence_rows, colWidths=[55 * mm, 109 * mm], repeatRows=1)
-        evidence_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EDF7F1")),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#C6E1CF")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 5),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.extend([evidence_table, Spacer(1, 4 * mm)])
+        for evidence_no, evidence in enumerate(evidence_by_asset, start=1):
+            story.append(_p(f"{evidence_no}. 파일: {evidence.get('asset') or '파일명 미기재'}", styles["table_bold"]))
+            story.append(_p(f"확인된 핵심 구조: {evidence.get('summary') or '분석 메모 미기재'}", styles["body"]))
+            story.append(Spacer(1, 1.2 * mm))
+        story.append(Spacer(1, 2 * mm))
 
     story.append(_p("6. 종합 의견", styles["h1"]))
-    summary_box = Table([[_p(overall_comment or "AI 총평이 입력되지 않았습니다.", styles["body"])]], colWidths=[164 * mm])
-    summary_box.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7FAFC")),
-        ("BOX", (0, 0), (-1, -1), 0.55, colors.HexColor("#CBD5E1")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-    ]))
-    story.extend([summary_box, Spacer(1, 5 * mm)])
+    story.append(_p(overall_comment or "AI 총평이 입력되지 않았습니다.", styles["body"]))
+    story.append(Spacer(1, 5 * mm))
 
     methodology = (
         "평가 기준: Gottweis et al. (2026), Accelerating scientific discovery with Co-Scientist의 "
