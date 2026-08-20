@@ -123,12 +123,6 @@ PROFILE_SELECTION_OPTIONS = {
     "혼합·맞춤형": "custom_hybrid",
 }
 
-RECOMMENDATION_MODE_OPTIONS = {
-    "핵심 보완안만": "현재 자료에서 확인된 공백·위험에 대한 우선 보완안만 제시",
-    "도메인 맞춤 설계 권고 포함": "우선 보완안과 조건부 AI Agent·도구·운영 확장안을 함께 제시",
-    "단계별 확장 로드맵 포함": "현재 보완안, 선택적 확장, 다음 검증 단계를 단계별로 제시",
-}
-
 # 호환성: 외부 테스트·기존 참조용 기본값. 실제 평가에는 선택된 프로파일을 사용한다.
 CRITERIA = EVALUATION_PROFILES["multi_agent"]["criteria"]
 
@@ -264,7 +258,6 @@ def build_prompt(
     domain: str,
     design_intent: str,
     intentionally_excluded: str,
-    recommendation_mode: str,
 ) -> str:
     inventory_text = "\n".join(
         f"- {item['kind']}: {item['name']} ({item['detail']})" for item in inventory
@@ -309,7 +302,6 @@ Gottweis et al. (2026) Co-Scientist는 멀티에이전트 협업형의 참조 �
 - 시스템 유형 선택: {requested_profile_id}
 - 핵심 설계 의도: {design_intent or '미입력'}
 - 의도적으로 제외한 구조와 사유: {intentionally_excluded or '미입력'}
-- 설계 권고 수준: {recommendation_mode}
 
 ## 전체 논문 기반 참조 원칙
 Co-Scientist 논문에서 상위 원칙만 참조하세요: 명확한 목표, 역할 또는 처리단계의 분리, 정보·근거의 추적, 검증·피드백 또는 대체 통제, 사람의 책임 있는 관여, 결과의 명확성. 논문 그림의 외형 복제나 Agent 수 자체를 평가하지 마세요.
@@ -341,18 +333,6 @@ Co-Scientist 논문에서 상위 원칙만 참조하세요: 명확한 목표, �
 - 설계 의도와 실제 표현이 일치하는지, 여러 파일을 종합했을 때 내부 정합성이 있는지를 우선 평가하세요.
 - 설계 선택 그 자체를 ‘프레이밍 실패’로 간주하지 말고, 해당 도메인의 품질 요구사항을 충족하는지를 판단하세요.
 
-## 프로젝트 맞춤 설계 권고 원칙
-평가 점수와 별도로, 제출 프로젝트의 도메인·설계 의도·선택 프로파일에 맞는 실행 가능한 권고를 제시하세요. 권고는 현재 구조를 Co-Scientist처럼 만들려는 목적이 아니라, 현재 구조의 강점을 보존하면서 품질·운영성·근거성·안전성을 높이는 목적임.
-
-- `keep_as_is`에는 현재 유지해야 할 설계 강점 또는 비기능 요구사항을 1~3개 제시하세요.
-- `priority_improvements`에는 실제 파일에서 확인된 공백 또는 위험을 근거로 한 우선 보완안을 최대 3개 제시하세요. 각 권고에는 우선순위, 영역, 권고, 근거, 구현 힌트를 포함하세요.
-- `optional_extensions`에는 **조건부·선택적** 확장만 최대 3개 제시하세요. Agent, 검증 모듈, Tool, Memory, 운영 통제 중 적합한 것을 추천할 수 있으나, 도입 조건·통합 지점·기대효과·트레이드오프·선택적인 이유를 반드시 포함하세요.
-- 결정론·감사가능 파이프라인에는 다수 Agent나 동적 조정 대신 버전 고정, 실행 매니페스트, 출처·인용 좌표 추적, 규칙 검증, 재실행 테스트 등을 우선 고려하세요.
-- 사람 승인형에는 승인·반려·에스컬레이션·개인정보·기록·책임 분리를 우선 고려하세요.
-- 멀티에이전트형에는 역할 중복 제거, 검증 독립성, Tool 권한, Memory 범위, 종료 조건을 우선 고려하세요.
-- 사용자 선언과 충돌하는 권고 또는 실제 설계 목적을 훼손하는 권고는 `avoid_or_defer`에 넣으세요. 예: 재현성이 핵심인 시스템에 비결정적 다중 Agent 추가를 권하지 마세요.
-- 권고는 점수·판정에 직접 반영하지 마세요. 권고에 맞춰 구조를 추가하지 않아도 감점하지 마세요.
-
 ## 이번 평가에 사용할 항목
 {active_criteria_text}
 
@@ -379,25 +359,6 @@ Co-Scientist 논문에서 상위 원칙만 참조하세요: 명확한 목표, �
   "evidence_by_asset": [
     {{"asset": "파일명 또는 파일명/쪽수", "summary": "해당 파일에서 확인된 핵심 구조 또는 역할"}}
   ],
-  "design_recommendations": {{
-    "recommendation_scope": "현재 프로젝트에 적용할 권고의 범위와 전제",
-    "architecture_fit_summary": "현재 설계가 도메인·프로파일에 맞는 이유와 개선 방향",
-    "keep_as_is": [
-      {{"item": "유지할 설계 강점", "reason": "유지해야 하는 이유"}}
-    ],
-    "priority_improvements": [
-      {{"priority": "high 또는 medium 또는 low", "area": "아키텍처·근거·검증·운영·보안 등", "recommendation": "우선 보완안", "rationale": "파일에서 확인된 근거", "implementation_hint": "현실적인 구현·문서화 방법"}}
-    ],
-    "optional_extensions": [
-      {{"condition": "도입이 적합한 조건", "component": "권고 Agent·모듈·Tool·통제", "responsibility": "권고 구성요소의 역할", "integration_point": "기존 시스템의 연결 지점", "benefit": "기대효과", "tradeoff": "비용·복잡성·재현성 등 고려사항", "why_optional": "필수 추가가 아닌 이유"}}
-    ],
-    "avoid_or_defer": [
-      {{"item": "도입을 피하거나 보류할 구조", "reason": "현재 설계 의도·도메인과 맞지 않는 이유"}}
-    ],
-    "next_validation": [
-      {{"item": "다음 검증·운영 점검", "success_criterion": "확인 가능한 완료 기준"}}
-    ]
-  }},
   "overall_comment": "전체 총평 2~3문장. 설계 강점, 선택 프로파일의 적합성, 핵심 보완점, 제출 준비 상태를 포함"
 }}
 """
@@ -445,9 +406,9 @@ def call_claude(api_key: str, model: str, prompt: str, image_assets: list[dict[s
         )
     response = client.messages.create(
         model=model,
-        max_tokens=8000,
+        max_tokens=6000,
         system=(
-            "너는 다양한 도메인의 AI Agent 시스템 산출물을 엄격하지만 건설적으로 평가하고 설계 권고를 제시하는 보조자다. "
+            "너는 엄격하지만 건설적인 대학 AI 멀티에이전트 연구 산출물 평가 보조자다. "
             "사용자가 요청한 JSON 객체 하나만 출력하고, JSON 밖의 인사말·설명·마크다운 코드펜스를 출력하지 마라."
         ),
         messages=[{"role": "user", "content": content}],
@@ -539,12 +500,6 @@ def _severity_label(value: str) -> tuple[str, colors.Color]:
     return "낮음", colors.HexColor("#1F7A4C")
 
 
-def _dict_list(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
-
-
 def generate_pdf(
     prof_name: str,
     dept: str,
@@ -561,7 +516,6 @@ def generate_pdf(
     evidence_by_asset: list[dict[str, Any]],
     inventory: list[dict[str, Any]],
     overall_comment: str,
-    design_recommendations: dict[str, Any],
 ) -> io.BytesIO:
     _register_fonts()
     styles = _pdf_styles()
@@ -711,57 +665,6 @@ def generate_pdf(
 
     story.append(_p("6. 종합 의견", styles["h1"]))
     story.append(_p(overall_comment or "AI 총평이 입력되지 않았습니다.", styles["body"]))
-    story.append(Spacer(1, 4 * mm))
-
-    recommendations = design_recommendations if isinstance(design_recommendations, dict) else {}
-    story.append(_p("7. 프로젝트 맞춤 설계 권고", styles["h1"]))
-    story.append(_p(recommendations.get("recommendation_scope") or "권고안은 점수와 분리되며, 현재 설계 의도와 도메인에 맞는 선택적 개선안임.", styles["body"]))
-    story.append(_p(recommendations.get("architecture_fit_summary") or "설계 적합성 요약이 제공되지 않았습니다.", styles["body"]))
-
-    keep_as_is = _dict_list(recommendations.get("keep_as_is"))
-    if keep_as_is:
-        story.append(_p("유지할 설계 강점", styles["table_bold"]))
-        for item in keep_as_is:
-            story.append(_p(f"• {item.get('item') or '항목 미기재'} — {item.get('reason') or '이유 미기재'}", styles["body"]))
-
-    improvements = _dict_list(recommendations.get("priority_improvements"))
-    if improvements:
-        story.append(_p("우선 보완안", styles["table_bold"]))
-        for index, item in enumerate(improvements, start=1):
-            priority, color = _severity_label(str(item.get("priority", "medium")))
-            title = Paragraph(
-                f'<font color="{color.hexval()}"><b>[{_safe(priority)}] {index}. {_safe(item.get("area") or "보완 영역")}</b></font>',
-                styles["body"],
-            )
-            story.append(title)
-            story.append(_p(f"권고: {item.get('recommendation') or '미기재'}", styles["body"]))
-            story.append(_p(f"근거: {item.get('rationale') or '미기재'}", styles["body"]))
-            story.append(_p(f"구현 힌트: {item.get('implementation_hint') or '미기재'}", styles["small"]))
-            story.append(Spacer(1, 1.2 * mm))
-
-    extensions = _dict_list(recommendations.get("optional_extensions"))
-    if extensions:
-        story.append(_p("조건부·선택적 확장", styles["table_bold"]))
-        for index, item in enumerate(extensions, start=1):
-            story.append(_p(f"{index}. 권고 구성요소: {item.get('component') or '미기재'}", styles["body"]))
-            story.append(_p(f"도입 조건: {item.get('condition') or '미기재'}", styles["body"]))
-            story.append(_p(f"역할 및 연결 지점: {item.get('responsibility') or '미기재'} / {item.get('integration_point') or '미기재'}", styles["body"]))
-            story.append(_p(f"기대효과: {item.get('benefit') or '미기재'}", styles["body"]))
-            story.append(_p(f"트레이드오프: {item.get('tradeoff') or '미기재'}", styles["small"]))
-            story.append(_p(f"선택적인 이유: {item.get('why_optional') or '미기재'}", styles["small"]))
-            story.append(Spacer(1, 1.2 * mm))
-
-    avoid_or_defer = _dict_list(recommendations.get("avoid_or_defer"))
-    if avoid_or_defer:
-        story.append(_p("도입 보류 또는 회피 권고", styles["table_bold"]))
-        for item in avoid_or_defer:
-            story.append(_p(f"• {item.get('item') or '항목 미기재'} — {item.get('reason') or '이유 미기재'}", styles["body"]))
-
-    next_validation = _dict_list(recommendations.get("next_validation"))
-    if next_validation:
-        story.append(_p("다음 검증 단계", styles["table_bold"]))
-        for item in next_validation:
-            story.append(_p(f"• {item.get('item') or '검증 항목 미기재'} | 완료 기준: {item.get('success_criterion') or '미기재'}", styles["body"]))
     story.append(Spacer(1, 5 * mm))
 
     methodology = (
@@ -824,13 +727,6 @@ intentionally_excluded = st.text_area(
     placeholder="예: 동적 Supervisor와 다수 Agent는 재현성·감사가능성·인용 좌표 보존을 위해 의도적으로 사용하지 않음.",
     height=85,
 )
-recommendation_label = st.selectbox(
-    "설계 권고 수준",
-    list(RECOMMENDATION_MODE_OPTIONS.keys()),
-    index=1,
-    help="권고안은 점수와 분리되며, 추천 구조를 도입하지 않아도 감점하지 않습니다.",
-)
-recommendation_mode = RECOMMENDATION_MODE_OPTIONS[recommendation_label]
 st.info(
     "중요: Supervisor, 다수 Agent, Memory, Feedback Loop가 없다는 이유만으로 감점하지 않습니다. "
     "미사용 사유와 대체 통제(재현성, 감사, 승인, 검증, 예외처리 등)가 실제 설계에 맞게 설명되었는지를 봅니다."
@@ -890,7 +786,6 @@ if st.button("다중 파일 정합성 평가 시작", type="primary", disabled=n
                 domain,
                 design_intent,
                 intentionally_excluded,
-                recommendation_mode,
             )
             ai_result = call_claude(api_key, model, prompt, image_assets)
             for key in list(st.session_state.keys()):
@@ -905,7 +800,6 @@ if st.button("다중 파일 정합성 평가 시작", type="primary", disabled=n
             st.session_state["domain"] = domain
             st.session_state["design_intent"] = design_intent
             st.session_state["intentionally_excluded"] = intentionally_excluded
-            st.session_state["recommendation_mode"] = recommendation_mode
     except AIResponseParseError as exc:
         st.error("AI 응답을 JSON으로 해석하지 못했습니다. 평가를 다시 시도해 주세요.")
         with st.expander("AI 원본 응답 보기"):
@@ -1027,53 +921,6 @@ if "ai_result" in st.session_state:
         height=120,
     )
 
-    design_recommendations = ai_result.get("design_recommendations", {}) or {}
-    st.markdown("---")
-    st.subheader("프로젝트 맞춤 AI Agent·운영 설계 권고")
-    st.caption("아래 권고는 점수·판정과 분리된 발전 제안입니다. 권고된 구조를 도입하지 않아도 감점하지 않습니다.")
-    st.write(design_recommendations.get("recommendation_scope", "현재 설계 의도와 도메인에 맞춘 권고 범위를 확인하세요."))
-    st.write(design_recommendations.get("architecture_fit_summary", "설계 적합성 요약이 제공되지 않았습니다."))
-
-    keep_as_is = _dict_list(design_recommendations.get("keep_as_is"))
-    if keep_as_is:
-        st.markdown("**유지할 설계 강점**")
-        for item in keep_as_is:
-            st.write(f"- **{item.get('item', '항목 미기재')}**: {item.get('reason', '이유 미기재')}")
-
-    priority_improvements = _dict_list(design_recommendations.get("priority_improvements"))
-    if priority_improvements:
-        st.markdown("**우선 보완안**")
-        for item in priority_improvements:
-            priority, _ = _severity_label(str(item.get("priority", "medium")))
-            st.warning(
-                f"**[{priority}] {item.get('area', '보완 영역')} — {item.get('recommendation', '미기재')}**\n\n"
-                f"근거: {item.get('rationale', '미기재')}\n\n"
-                f"구현 힌트: {item.get('implementation_hint', '미기재')}"
-            )
-
-    optional_extensions = _dict_list(design_recommendations.get("optional_extensions"))
-    if optional_extensions:
-        st.markdown("**조건부·선택적 확장**")
-        for item in optional_extensions:
-            with st.expander(f"{item.get('component', '선택적 확장')} — 도입 조건: {item.get('condition', '미기재')}"):
-                st.write(f"**역할:** {item.get('responsibility', '미기재')}")
-                st.write(f"**연결 지점:** {item.get('integration_point', '미기재')}")
-                st.write(f"**기대효과:** {item.get('benefit', '미기재')}")
-                st.write(f"**트레이드오프:** {item.get('tradeoff', '미기재')}")
-                st.write(f"**선택적인 이유:** {item.get('why_optional', '미기재')}")
-
-    avoid_or_defer = _dict_list(design_recommendations.get("avoid_or_defer"))
-    if avoid_or_defer:
-        st.markdown("**도입 보류 또는 회피 권고**")
-        for item in avoid_or_defer:
-            st.info(f"**{item.get('item', '항목 미기재')}** — {item.get('reason', '이유 미기재')}")
-
-    next_validation = _dict_list(design_recommendations.get("next_validation"))
-    if next_validation:
-        st.markdown("**다음 검증 단계**")
-        for item in next_validation:
-            st.write(f"- **{item.get('item', '검증 항목 미기재')}** | 완료 기준: {item.get('success_criterion', '미기재')}")
-
     st.markdown("---")
     pdf_buffer = generate_pdf(
         st.session_state.get("prof_name", ""),
@@ -1091,7 +938,6 @@ if "ai_result" in st.session_state:
         evidence_by_asset,
         st.session_state.get("inventory", []),
         overall_comment,
-        design_recommendations,
     )
     file_label = st.session_state.get("prof_name") or "result"
     st.download_button(
