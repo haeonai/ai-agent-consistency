@@ -1,5 +1,5 @@
 """
-AI 멀티에이전트 아키텍처 정합성 셀프체크 — Streamlit 앱
+AI Agent 시스템 아키텍처 적합성·정합성 셀프체크 — Streamlit 앱
 Reference: Gottweis et al. (2026), Nature, Co-Scientist
 
 여러 개의 아키텍처 이미지/PDF와 여러 개의 기능별 MD 파일을 한 번에 업로드하면,
@@ -46,61 +46,114 @@ REFERENCE_PATH = os.path.join(BASE_DIR, "co_scientist_full_paper_reference.md")
 FONT_NAME = "NanumGothic"
 FONT_NAME_BOLD = "NanumGothic-Bold"
 
-# 전체 논문(Figure 1 + Methods) 기반 7개 평가항목, 총 100점
-CRITERIA = [
-    {
-        "id": "actor_boundary",
-        "name": "① Actor · Input · System Boundary",
-        "max": 10,
-        "question": "사용자/연구자, 입력, AI 시스템, 외부 자원의 경계와 상호작용이 명확한가?",
+# 시스템 유형별 평가 프로파일. 모든 프로파일은 100점이지만 Agent 수가 아닌 설계 적합성을 평가한다.
+EVALUATION_PROFILES = {
+    "multi_agent": {
+        "name": "멀티에이전트 협업형",
+        "description": "복수 Agent가 역할을 나누고 Supervisor·Workflow·피드백으로 협업하는 시스템",
+        "criteria": [
+            {"id": "actor_boundary", "name": "① Actor · Input · System Boundary", "max": 10, "question": "사용자/연구자, 입력, 시스템, 외부 자원의 경계와 상호작용이 명확한가?"},
+            {"id": "orchestration", "name": "② Orchestration · Execution", "max": 20, "question": "Supervisor/Orchestrator/Planner가 목표를 해석하고 작업·순서·상태를 조정하는 방식이 명확한가?"},
+            {"id": "specialized_agents", "name": "③ Specialized Agents", "max": 20, "question": "2개 이상의 전문 역할이 중복 없이 구분되고, 각 Agent의 역할·입력·출력이 설명되는가?"},
+            {"id": "information_flow", "name": "④ Information · Control Flow", "max": 15, "question": "Agent 간 호출·협업·정보 전달 방향과 핵심 전달 객체가 명확한가?"},
+            {"id": "tools_evidence", "name": "⑤ Memory · Tools · Evidence", "max": 10, "question": "Memory/DB/RAG/Search/API/외부 모델의 목적과 연결 관계가 명확한가?"},
+            {"id": "feedback_validation", "name": "⑥ Feedback · Validation", "max": 10, "question": "검토·평가·재작업·종료 조건이 실제 설계에 맞게 표현되는가?"},
+            {"id": "output_consistency", "name": "⑦ Output · Cross-file Consistency", "max": 15, "question": "최종 산출물과 여러 이미지·MD의 명칭·역할·입출력·도구 사용이 일치하는가?"},
+        ],
     },
-    {
-        "id": "orchestration",
-        "name": "② Orchestration · Execution",
-        "max": 20,
-        "question": "Supervisor/Orchestrator/Planner가 목표를 해석하고 작업·순서·상태를 조정하는 방식이 명확한가?",
+    "deterministic_pipeline": {
+        "name": "결정론·감사가능 파이프라인형",
+        "description": "동일 입력의 재현성, 근거 좌표, 버전·감사 추적을 우선하는 고정 순서 처리 시스템",
+        "criteria": [
+            {"id": "purpose_boundary", "name": "① Purpose · Boundary", "max": 10, "question": "적용 목적, 입력 범위, 산출물, 시스템 경계가 명확한가?"},
+            {"id": "deterministic_execution", "name": "② Deterministic Execution", "max": 20, "question": "처리 단계·순서·분기·종료 조건이 고정 또는 명시적으로 제어되어 동일 입력에서 재현 가능한가?"},
+            {"id": "provenance_audit", "name": "③ Provenance · Auditability", "max": 20, "question": "입력·문서·인용 좌표·중간 산출물·파라미터·버전의 추적과 감사가 가능한가?"},
+            {"id": "data_flow", "name": "④ Data · Transform Flow", "max": 15, "question": "각 단계의 입력·변환·출력과 전달 방향이 명확한가?"},
+            {"id": "evidence_versioning", "name": "⑤ Evidence · Version Control", "max": 10, "question": "근거 출처, 데이터/모델/프롬프트 버전, 접근·기록 규칙이 실제 사용 범위에 맞게 설명되는가?"},
+            {"id": "verification_exception", "name": "⑥ Verification · Exception", "max": 10, "question": "검증 규칙, 오류·누락·충돌 처리, 사람 검토 또는 재실행 조건이 명확한가?"},
+            {"id": "output_consistency", "name": "⑦ Output · Cross-file Consistency", "max": 15, "question": "산출물의 재현·해석 가능성과 이미지·MD 간 단계·용어·입출력의 일치가 확보되는가?"},
+        ],
     },
-    {
-        "id": "specialized_agents",
-        "name": "③ Specialized Agents",
-        "max": 20,
-        "question": "2개 이상의 전문 역할이 중복 없이 구분되고, 각 Agent의 역할·입력·출력이 설명되는가?",
+    "single_agent_workflow": {
+        "name": "단일 Agent·도구 워크플로형",
+        "description": "한 Agent 또는 하나의 명확한 Workflow가 특정 기능을 수행하는 시스템",
+        "criteria": [
+            {"id": "actor_scope", "name": "① Actor · Scope · Boundary", "max": 10, "question": "사용자, 업무 범위, 입력·출력, 시스템 경계가 명확한가?"},
+            {"id": "execution_control", "name": "② Task · Execution Control", "max": 20, "question": "단일 Agent/Workflow가 수행할 작업, 순서, 조건, 종료 방식이 명확한가?"},
+            {"id": "capability_tool", "name": "③ Capability · Tool Boundary", "max": 20, "question": "Agent의 책임 범위와 사용 Tool/API/지식원의 역할·한계가 명확한가?"},
+            {"id": "flow_traceability", "name": "④ Information Flow · Traceability", "max": 15, "question": "질의·근거·처리 결과의 전달 흐름과 추적 가능성이 명확한가?"},
+            {"id": "context_evidence", "name": "⑤ Context · Evidence", "max": 10, "question": "대화이력·DB·RAG 등 실제 사용하는 컨텍스트와 근거 관리가 설명되는가?"},
+            {"id": "validation_approval", "name": "⑥ Validation · Approval", "max": 10, "question": "검증, 오류 처리, 사람 승인 또는 안전장치가 실제 운영 방식에 맞게 표현되는가?"},
+            {"id": "output_consistency", "name": "⑦ Output · Cross-file Consistency", "max": 15, "question": "결과물·수용자와 이미지·MD의 기능·입출력·명칭이 일치하는가?"},
+        ],
     },
-    {
-        "id": "information_flow",
-        "name": "④ Information · Control Flow",
-        "max": 15,
-        "question": "Agent 간 호출·협업·정보 전달 방향과 핵심 전달 객체가 화살표·설명으로 명확한가?",
+    "human_approval": {
+        "name": "사람 승인 중심 워크플로형",
+        "description": "교육·행정·상담·의료·법무처럼 사람의 최종 책임과 승인 절차가 핵심인 시스템",
+        "criteria": [
+            {"id": "actor_responsibility", "name": "① Actor · Responsibility", "max": 10, "question": "사용자·담당자·승인권자의 책임과 시스템 경계가 명확한가?"},
+            {"id": "workflow_control", "name": "② Workflow · Case Control", "max": 20, "question": "접수·처리·검토·승인·반려·종료의 업무 흐름과 상태가 명확한가?"},
+            {"id": "role_handoff", "name": "③ Role · Handoff", "max": 20, "question": "AI, 담당자, 관리자 등 역할 분담과 인수인계·책임 전환 지점이 명확한가?"},
+            {"id": "flow_audit", "name": "④ Information Flow · Audit", "max": 15, "question": "정보 이동, 결정 근거, 처리 이력, 기록 방향이 추적 가능한가?"},
+            {"id": "resource_privacy", "name": "⑤ Resource · Privacy", "max": 10, "question": "DB/API/문서 및 개인정보·민감정보의 접근 목적과 통제가 설명되는가?"},
+            {"id": "approval_exception", "name": "⑥ Approval · Exception", "max": 10, "question": "승인·반려 기준, 예외·오류 처리, 에스컬레이션 또는 사람 검토가 명확한가?"},
+            {"id": "output_consistency", "name": "⑦ Output · Cross-file Consistency", "max": 15, "question": "최종 안내·결정·문서와 이미지·MD의 역할·상태·입출력이 일치하는가?"},
+        ],
     },
-    {
-        "id": "tools_evidence",
-        "name": "⑤ Memory · Tools · Evidence",
-        "max": 10,
-        "question": "사용하는 Memory/Context, DB, RAG, Search, API, 외부 모델의 목적·연결 Agent·읽기/기록 또는 호출 관계가 명확한가?",
+    "custom_hybrid": {
+        "name": "혼합·맞춤형",
+        "description": "멀티 Agent, 파이프라인, 사람 승인, 도메인 규칙 등이 결합되거나 독특한 구조를 가진 시스템",
+        "criteria": [
+            {"id": "intent_fit", "name": "① Design Intent · Fit", "max": 20, "question": "설계 목적과 선택한 아키텍처 방식이 도메인 요구사항에 논리적으로 맞는가?"},
+            {"id": "component_boundary", "name": "② Component · Boundary", "max": 20, "question": "주요 구성요소의 책임·경계·의존 관계가 명확한가?"},
+            {"id": "flow_traceability", "name": "③ Flow · Traceability", "max": 15, "question": "입력·상태·근거·결과의 흐름이 추적 가능하게 표현되는가?"},
+            {"id": "evidence_state", "name": "④ Evidence · State Control", "max": 10, "question": "도구·DB·Memory·규칙·상태를 실제 사용 방식에 맞게 관리하는가?"},
+            {"id": "quality_control", "name": "⑤ Quality · Safety Control", "max": 15, "question": "검증·예외·안전·사람 개입 또는 대체 통제가 실제 위험에 맞게 존재하는가?"},
+            {"id": "output_consistency", "name": "⑥ Output · Cross-file Consistency", "max": 20, "question": "최종 산출물과 이미지·MD의 명칭·역할·흐름·근거가 일치하는가?"},
+        ],
     },
-    {
-        "id": "feedback_validation",
-        "name": "⑥ Feedback · Validation",
-        "max": 10,
-        "question": "검토·평가·오류 처리·재작업 또는 단발성 검증·종료 조건이 실제 설계에 맞게 표현되는가?",
-    },
-    {
-        "id": "output_consistency",
-        "name": "⑦ Output · Cross-file Consistency",
-        "max": 15,
-        "question": "최종 산출물과 수용자가 명확하며, 여러 이미지·여러 MD 사이의 명칭·역할·입출력·도구 사용이 일치하는가?",
-    },
-]
+}
 
-INTERNAL_CHECKS_PROMPT = [
-    "모든 아키텍처 이미지에 나타난 동일 구성요소의 이름·역할·방향이 서로 일치하는가?",
-    "이미지에 있는 Agent/Tool/Memory/Output 명칭이 MD 설명에 동일하거나 명확히 대응되는가?",
-    "이미지에서 표현한 입력·처리·출력 흐름과 MD 설명이 일치하는가?",
-    "각 Agent의 역할이 중복되거나 서로 모순되지 않는가?",
-    "화살표 방향이 실제 시스템 실행/정보 흐름과 일치한다고 볼 수 있는가?",
-    "Memory/DB/API/RAG/외부 모델을 사용하는 경우 이미지와 MD에 모두 반영되어 있는가?",
-    "반복·피드백 구조가 있다고 설명하면서 이미지에는 단방향으로만 표현되어 있지는 않은가?",
-    "논문 전체에서 확인되는 핵심 원칙(연구자 개입·조정·전문 역할·실행 흐름·상태/근거·검증·결과 반환)을 실제 연구 구조에 맞게 준용했는가?",
+PROFILE_SELECTION_OPTIONS = {
+    "자동 판별": "auto",
+    "멀티에이전트 협업형": "multi_agent",
+    "결정론·감사가능 파이프라인형": "deterministic_pipeline",
+    "단일 Agent·도구 워크플로형": "single_agent_workflow",
+    "사람 승인 중심 워크플로형": "human_approval",
+    "혼합·맞춤형": "custom_hybrid",
+}
+
+RECOMMENDATION_MODE_OPTIONS = {
+    "핵심 보완안만": "현재 자료에서 확인된 공백·위험에 대한 우선 보완안만 제시",
+    "도메인 맞춤 설계 권고 포함": "우선 보완안과 조건부 AI Agent·도구·운영 확장안을 함께 제시",
+    "단계별 확장 로드맵 포함": "현재 보완안, 선택적 확장, 다음 검증 단계를 단계별로 제시",
+}
+
+# 호환성: 외부 테스트·기존 참조용 기본값. 실제 평가에는 선택된 프로파일을 사용한다.
+CRITERIA = EVALUATION_PROFILES["multi_agent"]["criteria"]
+
+
+def get_profile(profile_id: str) -> dict[str, Any]:
+    return EVALUATION_PROFILES.get(profile_id, EVALUATION_PROFILES["custom_hybrid"])
+
+
+def profile_catalog_text() -> str:
+    blocks = []
+    for profile_id, profile in EVALUATION_PROFILES.items():
+        criteria_text = "\n".join(
+            f"  - id={criterion['id']} | {criterion['name']} ({criterion['max']}점): {criterion['question']}"
+            for criterion in profile["criteria"]
+        )
+        blocks.append(f"### {profile_id} | {profile['name']}\n{profile['description']}\n{criteria_text}")
+    return "\n\n".join(blocks)
+
+
+GENERIC_INTERNAL_CHECKS = [
+    "여러 이미지와 MD에 나타난 동일 구성요소 또는 단계의 이름·역할·방향이 서로 일치하는가?",
+    "입력·처리·출력·근거·상태의 흐름이 이미지와 MD에서 모순 없이 설명되는가?",
+    "선택한 아키텍처 유형과 의도적으로 사용하지 않은 구조의 이유가 설계 의도에 맞는가?",
+    "실제 사용하는 DB/API/도구/Memory/규칙만 이미지와 MD에 반영되어 있는가?",
+    "프로파일에 맞는 검증·감사·승인·피드백 또는 대체 통제가 실제 운영 방식과 일치하는가?",
 ]
 
 MODEL_OPTIONS = ["claude-sonnet-4-6", "claude-opus-4-6"]
@@ -203,12 +256,16 @@ def md_files_to_bundle(uploaded_files) -> tuple[str, list[dict[str, Any]]]:
     return "\n".join(blocks), inventory
 
 
-def build_prompt(md_bundle: str, image_assets: list[dict[str, Any]], inventory: list[dict[str, Any]]) -> str:
-    criteria_text = "\n".join(
-        f"- id=\"{c['id']}\" | {c['name']} (배점 {c['max']}점): {c['question']}"
-        for c in CRITERIA
-    )
-    internal_text = "\n".join(f"- {q}" for q in INTERNAL_CHECKS_PROMPT)
+def build_prompt(
+    md_bundle: str,
+    image_assets: list[dict[str, Any]],
+    inventory: list[dict[str, Any]],
+    requested_profile_id: str,
+    domain: str,
+    design_intent: str,
+    intentionally_excluded: str,
+    recommendation_mode: str,
+) -> str:
     inventory_text = "\n".join(
         f"- {item['kind']}: {item['name']} ({item['detail']})" for item in inventory
     )
@@ -218,17 +275,55 @@ def build_prompt(md_bundle: str, image_assets: list[dict[str, Any]], inventory: 
         image_lines.append(f"- 이미지 {idx}: {asset['name']}{page_label}")
     image_text = "\n".join(image_lines)
     reference = load_reference()
+    catalog = profile_catalog_text()
+    internal_text = "\n".join(f"- {question}" for question in GENERIC_INTERNAL_CHECKS)
 
-    return f"""당신은 대학 AI 멀티에이전트 연구 산출물의 정합성을 평가하는 채점 보조자입니다.
+    if requested_profile_id == "auto":
+        profile_instruction = (
+            "사용자가 자동 판별을 선택했습니다. 아키텍처 이미지·MD·설계 의도를 종합해 아래 프로파일 중 가장 적합한 "
+            "하나를 선택하고, 선택한 프로파일의 정확한 criteria ID와 배점으로만 채점하세요. "
+            "구조가 독특하거나 두 유형 이상이 동등하게 결합되면 custom_hybrid를 선택하세요."
+        )
+        active_criteria_text = "자동 판별 후 선택한 프로파일의 criteria를 사용"
+    else:
+        selected_profile = get_profile(requested_profile_id)
+        active_criteria_text = "\n".join(
+            f"- id=\"{criterion['id']}\" | {criterion['name']} (배점 {criterion['max']}점): {criterion['question']}"
+            for criterion in selected_profile["criteria"]
+        )
+        profile_instruction = (
+            f"사용자가 {requested_profile_id} | {selected_profile['name']} 프로파일을 명시적으로 선택했습니다. "
+            "이 프로파일의 criteria ID와 배점으로만 채점하세요. 제출물이 선택 프로파일과 본질적으로 맞지 않는 경우에만 "
+            "그 불일치를 지적하고, 다른 프로파일의 필수 요소가 없다는 이유로 감점하지 마세요."
+        )
 
-## 평가 목적
-Gottweis et al. (2026) Co-Scientist의 그림 외형을 복제했는지 평가하지 마세요. 전체 논문, 특히 Figure 1 및 Methods에서 확인되는 연구자 개입·목표/계획 해석·Supervisor 조정·전문 Agent 역할 분담·실행 흐름·Memory/Context·Tools/Evidence·Feedback/Validation·Output 원칙을 기준으로 삼으세요. 각 연구의 고유 Agent 명칭, 구현 방식, 순차형/비동기형 구조는 허용됩니다.
+    return f"""당신은 다양한 도메인의 AI 시스템 아키텍처와 설명 문서 사이의 정합성을 평가하는 보조자입니다.
 
-## 전체 논문 기반 참조 프레임
+## 평가의 가장 중요한 공정성 원칙
+Gottweis et al. (2026) Co-Scientist는 멀티에이전트 협업형의 참조 사례일 뿐, 모든 AI 시스템이 Supervisor·다수 Agent·토너먼트·반복 피드백을 가져야 한다는 규격이 아닙니다. 시스템의 **실제 목적과 설계 의도에 맞는 구조 선택**을 평가하세요.
+
+특히 동일 입력의 재현, 인용 좌표 보존, 감사가능성, 규정 준수, 안전성 또는 사람의 최종 책임이 중요한 시스템은 동적 조정과 다수 Agent를 의도적으로 배제한 결정론적 파이프라인 또는 승인 워크플로를 선택할 수 있습니다. 이 경우 Supervisor나 전문 Agent가 없다는 사실은 감점 사유가 아닙니다. 대신 처리 순서, 입력·버전·근거 추적, 검증, 예외 처리, 승인 또는 대체 통제가 명확한지 평가하세요.
+
+## 제출자가 선언한 맥락
+- 적용 도메인: {domain or '미입력'}
+- 시스템 유형 선택: {requested_profile_id}
+- 핵심 설계 의도: {design_intent or '미입력'}
+- 의도적으로 제외한 구조와 사유: {intentionally_excluded or '미입력'}
+- 설계 권고 수준: {recommendation_mode}
+
+## 전체 논문 기반 참조 원칙
+Co-Scientist 논문에서 상위 원칙만 참조하세요: 명확한 목표, 역할 또는 처리단계의 분리, 정보·근거의 추적, 검증·피드백 또는 대체 통제, 사람의 책임 있는 관여, 결과의 명확성. 논문 그림의 외형 복제나 Agent 수 자체를 평가하지 마세요.
+
 {reference}
 
+## 평가 프로파일 카탈로그
+{catalog}
+
+## 프로파일 적용 지침
+{profile_instruction}
+
 ## 업로드 범위
-아래의 여러 아키텍처 이미지와 여러 MD 파일은 하나의 프로젝트 제출 패키지입니다. 개요도·세부도·데이터 흐름도 등 여러 이미지가 서로 보완 관계일 수 있으므로, 한 파일에 없는 내용을 다른 파일에서 발견했다고 감점하지 마세요. 다만 동일한 구성요소의 명칭·역할·입출력·도구 사용·흐름 방향이 이미지끼리 또는 이미지와 MD 사이에서 모순되면 반드시 지적하세요.
+아래의 여러 아키텍처 이미지와 여러 MD 파일은 하나의 프로젝트 제출 패키지입니다. 개요도·세부도·데이터 흐름도 등 여러 이미지가 서로 보완 관계일 수 있으므로, 한 파일에 없는 내용을 다른 파일에서 발견했다고 감점하지 마세요. 다만 동일한 구성요소 또는 처리단계의 명칭·역할·입출력·도구 사용·흐름 방향이 이미지끼리 또는 이미지와 MD 사이에서 모순되면 지적하세요.
 
 ### 업로드 파일 목록
 {inventory_text}
@@ -241,26 +336,39 @@ Gottweis et al. (2026) Co-Scientist의 그림 외형을 복제했는지 평가�
 
 ## 채점 지침
 - 이미지와 MD에서 실제로 확인되는 내용만 근거로 삼으세요. 확인되지 않는 내용은 추정하지 마세요.
-- 각 항목 점수는 0 이상 배점 이하의 정수여야 합니다.
-- Memory, Tool, Feedback은 실제 미사용일 수 있습니다. 이 경우 억지로 감점하기보다, 미사용 또는 대체 검증 방식이 명확히 설명되었는지 보세요.
-- 여러 파일을 종합했을 때의 구조적 완결성과 파일 간 내부 정합성을 함께 평가하세요.
+- 각 항목 점수는 0 이상 배점 이하의 정수여야 하며, 선택한 프로파일의 총점은 100점입니다.
+- 의도적으로 미사용인 Agent, Memory, Tool, Feedback, 사람 승인은 ‘미사용 사유와 대체 통제’가 명확하면 감점하지 마세요.
+- 설계 의도와 실제 표현이 일치하는지, 여러 파일을 종합했을 때 내부 정합성이 있는지를 우선 평가하세요.
+- 설계 선택 그 자체를 ‘프레이밍 실패’로 간주하지 말고, 해당 도메인의 품질 요구사항을 충족하는지를 판단하세요.
 
-## 평가 항목 (7개, 총 100점)
-{criteria_text}
+## 프로젝트 맞춤 설계 권고 원칙
+평가 점수와 별도로, 제출 프로젝트의 도메인·설계 의도·선택 프로파일에 맞는 실행 가능한 권고를 제시하세요. 권고는 현재 구조를 Co-Scientist처럼 만들려는 목적이 아니라, 현재 구조의 강점을 보존하면서 품질·운영성·근거성·안전성을 높이는 목적임.
 
-## 내부 정합성 점검 (참고용 — 점수와 별도로 pass/fail 및 코멘트)
+- `keep_as_is`에는 현재 유지해야 할 설계 강점 또는 비기능 요구사항을 1~3개 제시하세요.
+- `priority_improvements`에는 실제 파일에서 확인된 공백 또는 위험을 근거로 한 우선 보완안을 최대 3개 제시하세요. 각 권고에는 우선순위, 영역, 권고, 근거, 구현 힌트를 포함하세요.
+- `optional_extensions`에는 **조건부·선택적** 확장만 최대 3개 제시하세요. Agent, 검증 모듈, Tool, Memory, 운영 통제 중 적합한 것을 추천할 수 있으나, 도입 조건·통합 지점·기대효과·트레이드오프·선택적인 이유를 반드시 포함하세요.
+- 결정론·감사가능 파이프라인에는 다수 Agent나 동적 조정 대신 버전 고정, 실행 매니페스트, 출처·인용 좌표 추적, 규칙 검증, 재실행 테스트 등을 우선 고려하세요.
+- 사람 승인형에는 승인·반려·에스컬레이션·개인정보·기록·책임 분리를 우선 고려하세요.
+- 멀티에이전트형에는 역할 중복 제거, 검증 독립성, Tool 권한, Memory 범위, 종료 조건을 우선 고려하세요.
+- 사용자 선언과 충돌하는 권고 또는 실제 설계 목적을 훼손하는 권고는 `avoid_or_defer`에 넣으세요. 예: 재현성이 핵심인 시스템에 비결정적 다중 Agent 추가를 권하지 마세요.
+- 권고는 점수·판정에 직접 반영하지 마세요. 권고에 맞춰 구조를 추가하지 않아도 감점하지 마세요.
+
+## 이번 평가에 사용할 항목
+{active_criteria_text}
+
+## 공통 내부 정합성 점검 (참고용)
 {internal_text}
 
-다른 설명 없이 아래 JSON 형식의 객체 하나만 응답하세요. 모든 배열 항목을 빠짐없이 채우세요.
+다른 설명 없이 아래 JSON 형식의 객체 하나만 응답하세요. scores에는 선택한 프로파일의 모든 criterion ID를 정확히 한 번씩 포함하세요.
 {{
+  "evaluation_profile": {{
+    "id": "선택한 프로파일 ID",
+    "name": "선택한 프로파일명",
+    "selection_reason": "이 프로파일이 도메인과 설계 의도에 맞는 이유",
+    "fairness_note": "의도적으로 제외한 구조를 어떻게 공정하게 해석했는지"
+  }},
   "scores": [
-    {{"id": "actor_boundary", "score": 0, "reason": "근거 한 문장"}},
-    {{"id": "orchestration", "score": 0, "reason": "근거 한 문장"}},
-    {{"id": "specialized_agents", "score": 0, "reason": "근거 한 문장"}},
-    {{"id": "information_flow", "score": 0, "reason": "근거 한 문장"}},
-    {{"id": "tools_evidence", "score": 0, "reason": "근거 한 문장"}},
-    {{"id": "feedback_validation", "score": 0, "reason": "근거 한 문장"}},
-    {{"id": "output_consistency", "score": 0, "reason": "근거 한 문장"}}
+    {{"id": "선택한 프로파일의 criterion ID", "score": 0, "reason": "이미지·MD·설계 의도에 근거한 판단"}}
   ],
   "internal_checks": [
     {{"question": "점검 질문", "pass": true, "comment": "짧은 근거"}}
@@ -271,7 +379,26 @@ Gottweis et al. (2026) Co-Scientist의 그림 외형을 복제했는지 평가�
   "evidence_by_asset": [
     {{"asset": "파일명 또는 파일명/쪽수", "summary": "해당 파일에서 확인된 핵심 구조 또는 역할"}}
   ],
-  "overall_comment": "전체 총평 2~3문장. 강점, 핵심 보완점, 제출 준비 상태를 포함"
+  "design_recommendations": {{
+    "recommendation_scope": "현재 프로젝트에 적용할 권고의 범위와 전제",
+    "architecture_fit_summary": "현재 설계가 도메인·프로파일에 맞는 이유와 개선 방향",
+    "keep_as_is": [
+      {{"item": "유지할 설계 강점", "reason": "유지해야 하는 이유"}}
+    ],
+    "priority_improvements": [
+      {{"priority": "high 또는 medium 또는 low", "area": "아키텍처·근거·검증·운영·보안 등", "recommendation": "우선 보완안", "rationale": "파일에서 확인된 근거", "implementation_hint": "현실적인 구현·문서화 방법"}}
+    ],
+    "optional_extensions": [
+      {{"condition": "도입이 적합한 조건", "component": "권고 Agent·모듈·Tool·통제", "responsibility": "권고 구성요소의 역할", "integration_point": "기존 시스템의 연결 지점", "benefit": "기대효과", "tradeoff": "비용·복잡성·재현성 등 고려사항", "why_optional": "필수 추가가 아닌 이유"}}
+    ],
+    "avoid_or_defer": [
+      {{"item": "도입을 피하거나 보류할 구조", "reason": "현재 설계 의도·도메인과 맞지 않는 이유"}}
+    ],
+    "next_validation": [
+      {{"item": "다음 검증·운영 점검", "success_criterion": "확인 가능한 완료 기준"}}
+    ]
+  }},
+  "overall_comment": "전체 총평 2~3문장. 설계 강점, 선택 프로파일의 적합성, 핵심 보완점, 제출 준비 상태를 포함"
 }}
 """
 
@@ -318,9 +445,9 @@ def call_claude(api_key: str, model: str, prompt: str, image_assets: list[dict[s
         )
     response = client.messages.create(
         model=model,
-        max_tokens=6000,
+        max_tokens=8000,
         system=(
-            "너는 엄격하지만 건설적인 대학 AI 멀티에이전트 연구 산출물 평가 보조자다. "
+            "너는 다양한 도메인의 AI Agent 시스템 산출물을 엄격하지만 건설적으로 평가하고 설계 권고를 제시하는 보조자다. "
             "사용자가 요청한 JSON 객체 하나만 출력하고, JSON 밖의 인사말·설명·마크다운 코드펜스를 출력하지 마라."
         ),
         messages=[{"role": "user", "content": content}],
@@ -397,7 +524,7 @@ def _header_footer(canvas, doc) -> None:
     canvas.line(18 * mm, page_height - 13 * mm, page_width - 18 * mm, page_height - 13 * mm)
     canvas.setFont(FONT_NAME, 7.3)
     canvas.setFillColor(colors.HexColor("#627D98"))
-    canvas.drawString(18 * mm, page_height - 10 * mm, "AI 멀티에이전트 아키텍처 정합성 평가 결과")
+    canvas.drawString(18 * mm, page_height - 10 * mm, "AI Agent 시스템 아키텍처 적합성·정합성 평가 결과")
     canvas.drawRightString(page_width - 18 * mm, 10 * mm, f"Page {doc.page}")
     canvas.drawString(18 * mm, 10 * mm, "Reference: Gottweis et al. (2026), Co-Scientist — Figure 1 및 Methods 기반")
     canvas.restoreState()
@@ -412,10 +539,20 @@ def _severity_label(value: str) -> tuple[str, colors.Color]:
     return "낮음", colors.HexColor("#1F7A4C")
 
 
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
 def generate_pdf(
     prof_name: str,
     dept: str,
     model: str,
+    evaluation_profile: dict[str, Any],
+    domain: str,
+    design_intent: str,
+    intentionally_excluded: str,
     final_scores: list[dict[str, Any]],
     total: int,
     verdict: str,
@@ -424,6 +561,7 @@ def generate_pdf(
     evidence_by_asset: list[dict[str, Any]],
     inventory: list[dict[str, Any]],
     overall_comment: str,
+    design_recommendations: dict[str, Any],
 ) -> io.BytesIO:
     _register_fonts()
     styles = _pdf_styles()
@@ -435,15 +573,15 @@ def generate_pdf(
         rightMargin=18 * mm,
         topMargin=21 * mm,
         bottomMargin=17 * mm,
-        title="AI 멀티에이전트 아키텍처 정합성 평가 결과",
+        title="AI Agent 시스템 아키텍처 적합성·정합성 평가 결과",
         author="AI MASTER 정합성 셀프체크",
     )
 
     story: list[Any] = []
-    story.append(Paragraph("AI 멀티에이전트 아키텍처<br/>정합성 평가 결과", styles["title"]))
+    story.append(Paragraph("AI Agent 시스템 아키텍처<br/>적합성·정합성 평가 결과", styles["title"]))
     story.append(
         _p(
-            "Gottweis et al. (2026) 전체 논문 기반 — Figure 1 및 Methods의 역할·흐름·상태·근거·검증 원칙 준용",
+            "Gottweis et al. (2026) 전체 논문 기반 — 시스템 유형·도메인·설계 의도에 맞춘 적응형 정합성 평가",
             styles["subtitle"],
         )
     )
@@ -451,6 +589,8 @@ def generate_pdf(
     meta_rows = [
         [_p("제출 교수", styles["table_bold"]), _p(prof_name or "미입력", styles["table"]),
          _p("소속/전공", styles["table_bold"]), _p(dept or "미입력", styles["table"])],
+        [_p("평가 프로파일", styles["table_bold"]), _p(evaluation_profile.get("name") or "미확정", styles["table"]),
+         _p("적용 도메인", styles["table_bold"]), _p(domain or "미입력", styles["table"])],
         [_p("평가 일시", styles["table_bold"]), _p(datetime.now().strftime("%Y-%m-%d %H:%M"), styles["table"]),
          _p("평가 모델", styles["table_bold"]), _p(model, styles["table"])],
     ]
@@ -475,7 +615,14 @@ def generate_pdf(
         ("TOPPADDING", (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
     ]))
-    story.extend([banner, Spacer(1, 5 * mm)])
+    story.extend([banner, Spacer(1, 4 * mm)])
+
+    story.append(_p("0. 평가 프레임과 설계 의도", styles["h1"]))
+    story.append(_p(f"선택 근거: {evaluation_profile.get('selection_reason') or '선택 근거 미제공'}", styles["body"]))
+    story.append(_p(f"공정성 해석: {evaluation_profile.get('fairness_note') or '설계 의도에 따라 평가함'}", styles["body"]))
+    story.append(_p(f"핵심 설계 의도: {design_intent or '미입력'}", styles["body"]))
+    story.append(_p(f"의도적으로 제외한 구조와 사유: {intentionally_excluded or '미입력'}", styles["body"]))
+    story.append(Spacer(1, 2 * mm))
 
     story.append(_p("1. 분석 범위", styles["h1"]))
     story.append(
@@ -564,13 +711,64 @@ def generate_pdf(
 
     story.append(_p("6. 종합 의견", styles["h1"]))
     story.append(_p(overall_comment or "AI 총평이 입력되지 않았습니다.", styles["body"]))
+    story.append(Spacer(1, 4 * mm))
+
+    recommendations = design_recommendations if isinstance(design_recommendations, dict) else {}
+    story.append(_p("7. 프로젝트 맞춤 설계 권고", styles["h1"]))
+    story.append(_p(recommendations.get("recommendation_scope") or "권고안은 점수와 분리되며, 현재 설계 의도와 도메인에 맞는 선택적 개선안임.", styles["body"]))
+    story.append(_p(recommendations.get("architecture_fit_summary") or "설계 적합성 요약이 제공되지 않았습니다.", styles["body"]))
+
+    keep_as_is = _dict_list(recommendations.get("keep_as_is"))
+    if keep_as_is:
+        story.append(_p("유지할 설계 강점", styles["table_bold"]))
+        for item in keep_as_is:
+            story.append(_p(f"• {item.get('item') or '항목 미기재'} — {item.get('reason') or '이유 미기재'}", styles["body"]))
+
+    improvements = _dict_list(recommendations.get("priority_improvements"))
+    if improvements:
+        story.append(_p("우선 보완안", styles["table_bold"]))
+        for index, item in enumerate(improvements, start=1):
+            priority, color = _severity_label(str(item.get("priority", "medium")))
+            title = Paragraph(
+                f'<font color="{color.hexval()}"><b>[{_safe(priority)}] {index}. {_safe(item.get("area") or "보완 영역")}</b></font>',
+                styles["body"],
+            )
+            story.append(title)
+            story.append(_p(f"권고: {item.get('recommendation') or '미기재'}", styles["body"]))
+            story.append(_p(f"근거: {item.get('rationale') or '미기재'}", styles["body"]))
+            story.append(_p(f"구현 힌트: {item.get('implementation_hint') or '미기재'}", styles["small"]))
+            story.append(Spacer(1, 1.2 * mm))
+
+    extensions = _dict_list(recommendations.get("optional_extensions"))
+    if extensions:
+        story.append(_p("조건부·선택적 확장", styles["table_bold"]))
+        for index, item in enumerate(extensions, start=1):
+            story.append(_p(f"{index}. 권고 구성요소: {item.get('component') or '미기재'}", styles["body"]))
+            story.append(_p(f"도입 조건: {item.get('condition') or '미기재'}", styles["body"]))
+            story.append(_p(f"역할 및 연결 지점: {item.get('responsibility') or '미기재'} / {item.get('integration_point') or '미기재'}", styles["body"]))
+            story.append(_p(f"기대효과: {item.get('benefit') or '미기재'}", styles["body"]))
+            story.append(_p(f"트레이드오프: {item.get('tradeoff') or '미기재'}", styles["small"]))
+            story.append(_p(f"선택적인 이유: {item.get('why_optional') or '미기재'}", styles["small"]))
+            story.append(Spacer(1, 1.2 * mm))
+
+    avoid_or_defer = _dict_list(recommendations.get("avoid_or_defer"))
+    if avoid_or_defer:
+        story.append(_p("도입 보류 또는 회피 권고", styles["table_bold"]))
+        for item in avoid_or_defer:
+            story.append(_p(f"• {item.get('item') or '항목 미기재'} — {item.get('reason') or '이유 미기재'}", styles["body"]))
+
+    next_validation = _dict_list(recommendations.get("next_validation"))
+    if next_validation:
+        story.append(_p("다음 검증 단계", styles["table_bold"]))
+        for item in next_validation:
+            story.append(_p(f"• {item.get('item') or '검증 항목 미기재'} | 완료 기준: {item.get('success_criterion') or '미기재'}", styles["body"]))
     story.append(Spacer(1, 5 * mm))
 
     methodology = (
-        "평가 기준: Gottweis et al. (2026), Accelerating scientific discovery with Co-Scientist의 "
-        "Figure 1 및 Methods에서 확인되는 연구자 개입, 계획·조정, 전문 Agent, 실행 흐름, "
-        "Memory/Context, Tools/Evidence, Feedback/Validation, Output 원칙을 준용함. "
-        "이는 논문 구조의 외형 복제를 요구하는 평가가 아니라, 제출된 다중 이미지와 다중 MD의 실제 설계·내부 정합성을 확인하는 평가임."
+        "평가 기준: Gottweis et al. (2026), Accelerating scientific discovery with Co-Scientist의 Figure 1 및 Methods에서 "
+        "도출한 상위 원칙(목표 명확성, 역할 또는 처리단계 분리, 정보·근거 추적, 검증·피드백 또는 대체 통제, "
+        "사람의 책임 있는 관여, 결과의 명확성)을 준용함. 본 결과는 '" + (evaluation_profile.get("name") or "미확정") + "' 프로파일로 평가했으며, "
+        "Supervisor·다수 Agent·Feedback 등 특정 구조의 부재 자체는 설계 의도와 대체 통제가 명확할 경우 감점 사유가 아님."
     )
     story.append(_p(methodology, styles["small"]))
 
@@ -582,8 +780,8 @@ def generate_pdf(
 # --------------------------------------------------------------------------
 # Streamlit UI
 # --------------------------------------------------------------------------
-st.set_page_config(page_title="AI 아키텍처 정합성 셀프체크", layout="wide")
-st.title("AI 멀티에이전트 아키텍처 정합성 셀프체크")
+st.set_page_config(page_title="AI Agent 시스템 아키텍처 정합성 셀프체크", layout="wide")
+st.title("AI Agent 시스템 아키텍처 적합성·정합성 셀프체크")
 st.caption("Gottweis et al. (2026) 전체 논문 — Figure 1 및 Methods 기반 다중 파일 종합 점검")
 
 with st.sidebar:
@@ -602,6 +800,41 @@ with st.sidebar:
 col1, col2 = st.columns(2)
 prof_name = col1.text_input("교수님 성함")
 dept = col2.text_input("소속/전공")
+
+st.subheader("평가 맥락 설정")
+st.caption("시스템의 실제 구조를 먼저 선언하면, 해당 목적에 맞는 기준으로 정합성을 평가합니다.")
+context_col1, context_col2 = st.columns(2)
+profile_label = context_col1.selectbox(
+    "시스템 유형·평가 프로파일",
+    list(PROFILE_SELECTION_OPTIONS.keys()),
+    help="자동 판별을 쓰거나, 시스템 성격에 맞는 프로파일을 직접 선택하세요.",
+)
+requested_profile_id = PROFILE_SELECTION_OPTIONS[profile_label]
+domain = context_col2.text_input(
+    "적용 도메인",
+    placeholder="예: 근거이론 연구, 학사행정, 지역산업 분석, 교육과정 설계",
+)
+design_intent = st.text_area(
+    "핵심 설계 의도",
+    placeholder="예: 동일 입력에서 동일 결과를 보장하고, 문장별 인용 좌표와 처리 이력을 감사 가능하게 유지함.",
+    height=85,
+)
+intentionally_excluded = st.text_area(
+    "의도적으로 제외한 구조와 사유",
+    placeholder="예: 동적 Supervisor와 다수 Agent는 재현성·감사가능성·인용 좌표 보존을 위해 의도적으로 사용하지 않음.",
+    height=85,
+)
+recommendation_label = st.selectbox(
+    "설계 권고 수준",
+    list(RECOMMENDATION_MODE_OPTIONS.keys()),
+    index=1,
+    help="권고안은 점수와 분리되며, 추천 구조를 도입하지 않아도 감점하지 않습니다.",
+)
+recommendation_mode = RECOMMENDATION_MODE_OPTIONS[recommendation_label]
+st.info(
+    "중요: Supervisor, 다수 Agent, Memory, Feedback Loop가 없다는 이유만으로 감점하지 않습니다. "
+    "미사용 사유와 대체 통제(재현성, 감사, 승인, 검증, 예외처리 등)가 실제 설계에 맞게 설명되었는지를 봅니다."
+)
 
 st.subheader("제출 패키지 업로드")
 st.info(
@@ -649,13 +882,30 @@ if st.button("다중 파일 정합성 평가 시작", type="primary", disabled=n
             image_assets, diagram_inventory = diagrams_to_image_assets(diagram_files)
             md_bundle, md_inventory = md_files_to_bundle(md_files)
             inventory = diagram_inventory + md_inventory
-            prompt = build_prompt(md_bundle, image_assets, inventory)
+            prompt = build_prompt(
+                md_bundle,
+                image_assets,
+                inventory,
+                requested_profile_id,
+                domain,
+                design_intent,
+                intentionally_excluded,
+                recommendation_mode,
+            )
             ai_result = call_claude(api_key, model, prompt, image_assets)
+            for key in list(st.session_state.keys()):
+                if key.startswith("score_"):
+                    del st.session_state[key]
             st.session_state["ai_result"] = ai_result
             st.session_state["prof_name"] = prof_name
             st.session_state["dept"] = dept
             st.session_state["model"] = model
             st.session_state["inventory"] = inventory
+            st.session_state["requested_profile_id"] = requested_profile_id
+            st.session_state["domain"] = domain
+            st.session_state["design_intent"] = design_intent
+            st.session_state["intentionally_excluded"] = intentionally_excluded
+            st.session_state["recommendation_mode"] = recommendation_mode
     except AIResponseParseError as exc:
         st.error("AI 응답을 JSON으로 해석하지 못했습니다. 평가를 다시 시도해 주세요.")
         with st.expander("AI 원본 응답 보기"):
@@ -666,14 +916,41 @@ if st.button("다중 파일 정합성 평가 시작", type="primary", disabled=n
 if "ai_result" in st.session_state:
     ai_result = st.session_state["ai_result"]
     score_map = {item.get("id"): item for item in ai_result.get("scores", [])}
+    profile_result = ai_result.get("evaluation_profile", {}) or {}
+    requested_profile_id_result = st.session_state.get("requested_profile_id", "auto")
+    model_profile_id = str(profile_result.get("id", ""))
+    if requested_profile_id_result != "auto":
+        active_profile_id = requested_profile_id_result
+        selection_reason = profile_result.get("selection_reason") or "사용자가 시스템 목적에 맞는 프로파일을 명시적으로 선택했음."
+        fairness_note = profile_result.get("fairness_note") or "선택 프로파일 이외의 구조 부재는 감점하지 않고, 대체 통제의 명확성을 평가함."
+    elif model_profile_id in EVALUATION_PROFILES:
+        active_profile_id = model_profile_id
+        selection_reason = profile_result.get("selection_reason") or "업로드 자료를 바탕으로 자동 판별함."
+        fairness_note = profile_result.get("fairness_note") or "설계 목적에 맞는 구조를 기준으로 평가함."
+    else:
+        active_profile_id = "custom_hybrid"
+        selection_reason = "자동 판별 결과가 유효하지 않아 혼합·맞춤형 프로파일을 기본 적용함."
+        fairness_note = "특정 구조의 부재 자체를 감점하지 않고 설계 의도와 대체 통제를 평가함."
+    active_profile = get_profile(active_profile_id)
+    evaluation_profile = {
+        "id": active_profile_id,
+        "name": active_profile["name"],
+        "selection_reason": selection_reason,
+        "fairness_note": fairness_note,
+    }
 
     st.markdown("---")
+    st.subheader("적용 평가 프로파일")
+    st.info(f"**{active_profile['name']}** — {active_profile['description']}")
+    st.caption(f"선택 근거: {selection_reason}")
+    st.caption(f"공정성 해석: {fairness_note}")
+
     st.subheader("항목별 평가 결과")
-    st.caption("AI 1차 채점 결과입니다. 최종 제출 전 멘토 또는 담당자가 점수와 총평을 직접 보정할 수 있습니다.")
+    st.caption("AI 1차 채점 결과입니다. 이 점수는 적용 프로파일 안에서만 해석하며, Agent 수가 많거나 적다는 사실만으로 평가하지 않습니다.")
 
     final_scores: list[dict[str, Any]] = []
     total = 0
-    for criterion in CRITERIA:
+    for criterion in active_profile["criteria"]:
         ai_item = score_map.get(criterion["id"], {})
         try:
             ai_score = int(ai_item.get("score", 0) or 0)
@@ -690,7 +967,7 @@ if "ai_result" in st.session_state:
                 min_value=0,
                 max_value=criterion["max"],
                 value=ai_score,
-                key=f"score_{criterion['id']}",
+                key=f"score_{active_profile_id}_{criterion['id']}",
             )
         total += edited_score
         final_scores.append(
@@ -750,11 +1027,62 @@ if "ai_result" in st.session_state:
         height=120,
     )
 
+    design_recommendations = ai_result.get("design_recommendations", {}) or {}
+    st.markdown("---")
+    st.subheader("프로젝트 맞춤 AI Agent·운영 설계 권고")
+    st.caption("아래 권고는 점수·판정과 분리된 발전 제안입니다. 권고된 구조를 도입하지 않아도 감점하지 않습니다.")
+    st.write(design_recommendations.get("recommendation_scope", "현재 설계 의도와 도메인에 맞춘 권고 범위를 확인하세요."))
+    st.write(design_recommendations.get("architecture_fit_summary", "설계 적합성 요약이 제공되지 않았습니다."))
+
+    keep_as_is = _dict_list(design_recommendations.get("keep_as_is"))
+    if keep_as_is:
+        st.markdown("**유지할 설계 강점**")
+        for item in keep_as_is:
+            st.write(f"- **{item.get('item', '항목 미기재')}**: {item.get('reason', '이유 미기재')}")
+
+    priority_improvements = _dict_list(design_recommendations.get("priority_improvements"))
+    if priority_improvements:
+        st.markdown("**우선 보완안**")
+        for item in priority_improvements:
+            priority, _ = _severity_label(str(item.get("priority", "medium")))
+            st.warning(
+                f"**[{priority}] {item.get('area', '보완 영역')} — {item.get('recommendation', '미기재')}**\n\n"
+                f"근거: {item.get('rationale', '미기재')}\n\n"
+                f"구현 힌트: {item.get('implementation_hint', '미기재')}"
+            )
+
+    optional_extensions = _dict_list(design_recommendations.get("optional_extensions"))
+    if optional_extensions:
+        st.markdown("**조건부·선택적 확장**")
+        for item in optional_extensions:
+            with st.expander(f"{item.get('component', '선택적 확장')} — 도입 조건: {item.get('condition', '미기재')}"):
+                st.write(f"**역할:** {item.get('responsibility', '미기재')}")
+                st.write(f"**연결 지점:** {item.get('integration_point', '미기재')}")
+                st.write(f"**기대효과:** {item.get('benefit', '미기재')}")
+                st.write(f"**트레이드오프:** {item.get('tradeoff', '미기재')}")
+                st.write(f"**선택적인 이유:** {item.get('why_optional', '미기재')}")
+
+    avoid_or_defer = _dict_list(design_recommendations.get("avoid_or_defer"))
+    if avoid_or_defer:
+        st.markdown("**도입 보류 또는 회피 권고**")
+        for item in avoid_or_defer:
+            st.info(f"**{item.get('item', '항목 미기재')}** — {item.get('reason', '이유 미기재')}")
+
+    next_validation = _dict_list(design_recommendations.get("next_validation"))
+    if next_validation:
+        st.markdown("**다음 검증 단계**")
+        for item in next_validation:
+            st.write(f"- **{item.get('item', '검증 항목 미기재')}** | 완료 기준: {item.get('success_criterion', '미기재')}")
+
     st.markdown("---")
     pdf_buffer = generate_pdf(
         st.session_state.get("prof_name", ""),
         st.session_state.get("dept", ""),
         st.session_state.get("model", model),
+        evaluation_profile,
+        st.session_state.get("domain", ""),
+        st.session_state.get("design_intent", ""),
+        st.session_state.get("intentionally_excluded", ""),
         final_scores,
         total,
         verdict,
@@ -763,6 +1091,7 @@ if "ai_result" in st.session_state:
         evidence_by_asset,
         st.session_state.get("inventory", []),
         overall_comment,
+        design_recommendations,
     )
     file_label = st.session_state.get("prof_name") or "result"
     st.download_button(
